@@ -1,0 +1,50 @@
+{
+	"name": "adls_CustomerServiceInteractions",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "wsp-ncpl-ash-WorkspaceDefaultStorage",
+			"type": "LinkedServiceReference"
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": "CustomerServiceInteractions.csv",
+				"folderPath": "PROJECT3/BRONZE",
+				"fileSystem": "container11"
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": [
+			{
+				"name": "InteractionID",
+				"type": "String"
+			},
+			{
+				"name": "CustomerID",
+				"type": "String"
+			},
+			{
+				"name": "DateTime",
+				"type": "String"
+			},
+			{
+				"name": "AgentID",
+				"type": "String"
+			},
+			{
+				"name": "IssueType",
+				"type": "String"
+			},
+			{
+				"name": "ResolutionStatus",
+				"type": "String"
+			}
+		]
+	},
+	"type": "Microsoft.Synapse/workspaces/datasets"
+}
