@@ -1,0 +1,39 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "adf-ncpl-ash"
+		},
+		"AzureDataLakeStoragesink_accountKey": {
+			"value": ""
+		},
+		"AzureDataLakeStoragesource_accountKey": {
+			"value": ""
+		},
+		"wsp-ncpl-ash-WorkspaceDefaultSqlServer_connectionString": {
+			"value": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:wsp-ncpl-ash.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"AzureDataLakeStoragesink_properties_typeProperties_url": {
+			"value": "https://adlsgen2ash.dfs.core.windows.net/"
+		},
+		"AzureDataLakeStoragesource_properties_typeProperties_url": {
+			"value": "https://adlsgen2ash.dfs.core.windows.net/"
+		},
+		"AzureKeyVault1_properties_typeProperties_baseUrl": {
+			"value": "https://ncplash.vault.azure.net/"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_server": {
+			"value": "ncplserverash.database.windows.net"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_database": {
+			"value": "mydb4"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_userName": {
+			"value": "adminnusrat"
+		},
+		"wsp-ncpl-ash-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"value": "https://adlsgen2ash.dfs.core.windows.net"
+		}
+	}
+}
