@@ -1,0 +1,2159 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"workspaceName": {
+			"type": "string",
+			"metadata": "Workspace name",
+			"defaultValue": "wsp-ncpl-ash"
+		},
+		"AzureDataLakeStoragesink_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'AzureDataLakeStoragesink'"
+		},
+		"AzureDataLakeStoragesource_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'AzureDataLakeStoragesource'"
+		},
+		"wsp-ncpl-ash-WorkspaceDefaultSqlServer_connectionString": {
+			"type": "secureString",
+			"metadata": "Secure string for 'connectionString' of 'wsp-ncpl-ash-WorkspaceDefaultSqlServer'",
+			"defaultValue": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=tcp:wsp-ncpl-ash.sql.azuresynapse.net,1433;Initial Catalog=@{linkedService().DBName}"
+		},
+		"AzureDataLakeStoragesink_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://adlsgen2ash.dfs.core.windows.net/"
+		},
+		"AzureDataLakeStoragesource_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://adlsgen2ash.dfs.core.windows.net/"
+		},
+		"AzureKeyVault1_properties_typeProperties_baseUrl": {
+			"type": "string",
+			"defaultValue": "https://ncplash.vault.azure.net/"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "ncplserverash.database.windows.net"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "mydb4"
+		},
+		"AzureSqlDatabase1_properties_typeProperties_userName": {
+			"type": "string",
+			"defaultValue": "adminnusrat"
+		},
+		"wsp-ncpl-ash-WorkspaceDefaultStorage_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://adlsgen2ash.dfs.core.windows.net"
+		}
+	},
+	"variables": {
+		"workspaceId": "[concat('Microsoft.Synapse/workspaces/', parameters('workspaceName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('workspaceName'), '/Masterpipeline_UPDATED')]",
+			"type": "Microsoft.Synapse/workspaces/pipelines",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"activities": [
+					{
+						"name": "BRONZE",
+						"type": "ExecutePipeline",
+						"dependsOn": [],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_bronze_",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {}
+						}
+					},
+					{
+						"name": "SILVER",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "BRONZE",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_silver",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {}
+						}
+					},
+					{
+						"name": "GOLD",
+						"type": "ExecutePipeline",
+						"dependsOn": [
+							{
+								"activity": "SILVER",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"pipeline": {
+								"referenceName": "pl_gold",
+								"type": "PipelineReference"
+							},
+							"waitOnCompletion": true,
+							"parameters": {}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-05-09T15:13:39Z"
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/pipelines/pl_bronze_')]",
+				"[concat(variables('workspaceId'), '/pipelines/pl_silver')]",
+				"[concat(variables('workspaceId'), '/pipelines/pl_gold')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/pl_bronze_')]",
+			"type": "Microsoft.Synapse/workspaces/pipelines",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"activities": [
+					{
+						"name": "Get Metadata1",
+						"type": "GetMetadata",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataset": {
+								"referenceName": "csv1",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"fieldList": [
+								"childItems"
+							],
+							"storeSettings": {
+								"type": "AzureBlobFSReadSettings",
+								"recursive": true,
+								"enablePartitionDiscovery": false
+							},
+							"formatSettings": {
+								"type": "DelimitedTextReadSettings"
+							}
+						}
+					},
+					{
+						"name": "ForEach1",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "Get Metadata1",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('Get Metadata1').output.childItems",
+								"type": "Expression"
+							},
+							"isSequential": false,
+							"activities": [
+								{
+									"name": "Copy data1",
+									"type": "Copy",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "DelimitedTextSource",
+											"storeSettings": {
+												"type": "AzureBlobFSReadSettings",
+												"recursive": true,
+												"wildcardFileName": {
+													"value": "@item().name",
+													"type": "Expression"
+												},
+												"enablePartitionDiscovery": false
+											},
+											"formatSettings": {
+												"type": "DelimitedTextReadSettings"
+											}
+										},
+										"sink": {
+											"type": "DelimitedTextSink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings",
+												"copyBehavior": "FlattenHierarchy"
+											},
+											"formatSettings": {
+												"type": "DelimitedTextWriteSettings",
+												"quoteAllText": true,
+												"fileExtension": ".txt"
+											}
+										},
+										"enableStaging": false,
+										"translator": {
+											"type": "TabularTranslator",
+											"typeConversion": true,
+											"typeConversionSettings": {
+												"allowDataTruncation": true,
+												"treatBooleanAsNumber": false
+											}
+										}
+									},
+									"inputs": [
+										{
+											"referenceName": "csv2",
+											"type": "DatasetReference",
+											"parameters": {
+												"folderPath": "PROJECT1/LOCAL",
+												"fileName": {
+													"value": "@item().name",
+													"type": "Expression"
+												}
+											}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "csv2",
+											"type": "DatasetReference",
+											"parameters": {
+												"folderPath": "PROJECT1/BRONZE",
+												"fileName": {
+													"value": "@item().name",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								}
+							]
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-05-09T14:27:57Z"
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/datasets/csv1')]",
+				"[concat(variables('workspaceId'), '/datasets/csv2')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/pl_gold')]",
+			"type": "Microsoft.Synapse/workspaces/pipelines",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"activities": [
+					{
+						"name": "accounts",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow2",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"source1": {},
+									"target": {},
+									"sink1": {},
+									"sink2": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					},
+					{
+						"name": "customers",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow3",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"source1": {},
+									"target1": {},
+									"sink2": {},
+									"sink3": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					},
+					{
+						"name": "loans",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow4",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"source1": {},
+									"target2": {},
+									"sink1": {},
+									"sink2": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					},
+					{
+						"name": "loanpayments",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow5",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"source1": {},
+									"target3": {},
+									"sink1": {},
+									"sink2": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					},
+					{
+						"name": "transations",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow6",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"source1": {},
+									"target4": {},
+									"sink1": {},
+									"sink2": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-05-09T14:31:27Z"
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/dataflows/dataflow2')]",
+				"[concat(variables('workspaceId'), '/dataflows/dataflow3')]",
+				"[concat(variables('workspaceId'), '/dataflows/dataflow4')]",
+				"[concat(variables('workspaceId'), '/dataflows/dataflow5')]",
+				"[concat(variables('workspaceId'), '/dataflows/dataflow6')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/pl_silver')]",
+			"type": "Microsoft.Synapse/workspaces/pipelines",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"activities": [
+					{
+						"name": "Data flow1",
+						"type": "ExecuteDataFlow",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"dataflow": {
+								"referenceName": "dataflow1",
+								"type": "DataFlowReference",
+								"parameters": {},
+								"datasetParameters": {
+									"accounts": {},
+									"customers": {},
+									"loanpayments": {},
+									"loans": {},
+									"transactions": {},
+									"accountssink": {},
+									"customerssink": {},
+									"loanpaymentssink": {},
+									"loanssink": {},
+									"transactionsink": {}
+								}
+							},
+							"staging": {},
+							"compute": {
+								"coreCount": 8,
+								"computeType": "General"
+							},
+							"traceLevel": "Fine"
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"annotations": [],
+				"lastPublishTime": "2025-05-09T10:53:25Z"
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/dataflows/dataflow1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/DelimitedText1')]",
+			"type": "Microsoft.Synapse/workspaces/datasets",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureDataLakeStoragesource",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": []
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/csv1')]",
+			"type": "Microsoft.Synapse/workspaces/datasets",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureDataLakeStoragesource",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"folderPath": "PROJECT1/LOCAL",
+						"fileSystem": "container11"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": [
+					{
+						"name": "account_id",
+						"type": "String"
+					},
+					{
+						"name": "customer_id",
+						"type": "String"
+					},
+					{
+						"name": "account_type",
+						"type": "String"
+					},
+					{
+						"name": "balance",
+						"type": "String"
+					}
+				]
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/csv2')]",
+			"type": "Microsoft.Synapse/workspaces/datasets",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "AzureDataLakeStoragesink",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"folderPath": {
+						"type": "string"
+					},
+					"fileName": {
+						"type": "string"
+					}
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@dataset().fileName",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@dataset().folderPath",
+							"type": "Expression"
+						},
+						"fileSystem": "container11"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": []
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesink')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AzureDataLakeStoragesink')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('AzureDataLakeStoragesink_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('AzureDataLakeStoragesink_accountKey')]"
+					}
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AzureDataLakeStoragesource')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('AzureDataLakeStoragesource_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('AzureDataLakeStoragesource_accountKey')]"
+					}
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AzureKeyVault1')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureKeyVault",
+				"typeProperties": {
+					"baseUrl": "[parameters('AzureKeyVault1_properties_typeProperties_baseUrl')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AzureSqlDatabase1')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureSqlDatabase",
+				"typeProperties": {
+					"server": "[parameters('AzureSqlDatabase1_properties_typeProperties_server')]",
+					"database": "[parameters('AzureSqlDatabase1_properties_typeProperties_database')]",
+					"encrypt": "optional",
+					"trustServerCertificate": false,
+					"authenticationType": "SQL",
+					"userName": "[parameters('AzureSqlDatabase1_properties_typeProperties_userName')]",
+					"password": {
+						"type": "AzureKeyVaultSecret",
+						"store": {
+							"referenceName": "AzureKeyVault1",
+							"type": "LinkedServiceReference"
+						},
+						"secretName": "sqlpassword"
+					}
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureKeyVault1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/wsp-ncpl-ash-WorkspaceDefaultSqlServer')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"parameters": {
+					"DBName": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"type": "AzureSqlDW",
+				"typeProperties": {
+					"connectionString": "[parameters('wsp-ncpl-ash-WorkspaceDefaultSqlServer_connectionString')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/wsp-ncpl-ash-WorkspaceDefaultStorage')]",
+			"type": "Microsoft.Synapse/workspaces/linkedServices",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('wsp-ncpl-ash-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+				},
+				"connectVia": {
+					"referenceName": "AutoResolveIntegrationRuntime",
+					"type": "IntegrationRuntimeReference"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/integrationRuntimes/AutoResolveIntegrationRuntime')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/AutoResolveIntegrationRuntime')]",
+			"type": "Microsoft.Synapse/workspaces/integrationRuntimes",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "Managed",
+				"typeProperties": {
+					"computeProperties": {
+						"location": "AutoResolve",
+						"dataFlowProperties": {
+							"computeType": "General",
+							"coreCount": 8,
+							"timeToLive": 0
+						}
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/integrationRuntime1')]",
+			"type": "Microsoft.Synapse/workspaces/integrationRuntimes",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "Managed",
+				"typeProperties": {
+					"computeProperties": {
+						"location": "AutoResolve",
+						"dataFlowProperties": {
+							"computeType": "General",
+							"coreCount": 8,
+							"timeToLive": 10,
+							"cleanup": false,
+							"customProperties": []
+						}
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow1')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "accounts"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "customers"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "loanpayments"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "loans"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "transactions"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							},
+							"name": "accountssink",
+							"rejectedDataLinkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							},
+							"name": "customerssink",
+							"rejectedDataLinkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							},
+							"name": "loanpaymentssink",
+							"rejectedDataLinkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							},
+							"name": "loanssink",
+							"rejectedDataLinkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							}
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							},
+							"name": "transactionsink",
+							"rejectedDataLinkedService": {
+								"referenceName": "AzureDataLakeStoragesink",
+								"type": "LinkedServiceReference"
+							}
+						}
+					],
+					"transformations": [
+						{
+							"name": "rename1"
+						},
+						{
+							"name": "accountsfilter"
+						},
+						{
+							"name": "removeduplicatesaccounts"
+						},
+						{
+							"name": "rename2"
+						},
+						{
+							"name": "customersfilter"
+						},
+						{
+							"name": "removeduplicatescustomer"
+						},
+						{
+							"name": "loanpaymentfilter"
+						},
+						{
+							"name": "rename3"
+						},
+						{
+							"name": "removeduplicatesloanpayments"
+						},
+						{
+							"name": "rename4"
+						},
+						{
+							"name": "loansfilter"
+						},
+						{
+							"name": "removeduplicatesloans"
+						},
+						{
+							"name": "rename5"
+						},
+						{
+							"name": "transactionsfilter"
+						},
+						{
+							"name": "removeduplicatestranscations"
+						},
+						{
+							"name": "derivedColumn1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          account_id as short,",
+						"          customer_id as short,",
+						"          account_type as string,",
+						"          balance as double",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/BRONZE',",
+						"     fileName: 'accounts.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> accounts",
+						"source(output(",
+						"          customer_id as short,",
+						"          first_name as string,",
+						"          last_name as string,",
+						"          address as string,",
+						"          city as string,",
+						"          state as string,",
+						"          zip as string",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/BRONZE',",
+						"     fileName: 'customers.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> customers",
+						"source(output(",
+						"          payment_id as short,",
+						"          loan_id as short,",
+						"          payment_date as date,",
+						"          payment_amount as double",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/BRONZE',",
+						"     fileName: 'loan_payments.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> loanpayments",
+						"source(output(",
+						"          loan_id as short,",
+						"          customer_id as short,",
+						"          loan_amount as double,",
+						"          interest_rate as double,",
+						"          loan_term as short",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/BRONZE',",
+						"     fileName: 'loans.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> loans",
+						"source(output(",
+						"          transaction_id as short,",
+						"          account_id as short,",
+						"          transaction_date as date,",
+						"          transaction_amount as double,",
+						"          transaction_type as string",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/BRONZE',",
+						"     fileName: 'transactions.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> transactions",
+						"accounts select(mapColumn(",
+						"          accountid = account_id,",
+						"          customerid = customer_id,",
+						"          accounttype = account_type,",
+						"          balance",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename1",
+						"rename1 filter(!isNull(accountid) || toString(accountid) != '' ||",
+						"!isNull(customerid) || toString(customerid) != '' ||",
+						"(accounttype == 'Savings' || accounttype == 'Checking') &&",
+						"!isNull(balance) || balance >= 0) ~> accountsfilter",
+						"accountsfilter aggregate(groupBy(accountid,",
+						"          customerid),",
+						"     accounttype = first(accounttype),",
+						"          balance = first(balance)) ~> removeduplicatesaccounts",
+						"customers select(mapColumn(",
+						"          customerid = customer_id,",
+						"          firstname = first_name,",
+						"          lastname = last_name,",
+						"          address,",
+						"          city,",
+						"          state,",
+						"          zip",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename2",
+						"rename2 filter(!isNull(customerid) && toString(customerid) != '' &&",
+						"!isNull(firstname) && firstname != '' &&",
+						"!isNull(lastname) && lastname != '' &&",
+						"!isNull(state) && state != '' &&",
+						"!isNull(zip) && zip != '') ~> customersfilter",
+						"customersfilter aggregate(groupBy(customerid),",
+						"     firstname = first(firstname),",
+						"          lastname = first(lastname),",
+						"          address = first(address),",
+						"          city = first(city),",
+						"          state = first(state),",
+						"          zip = first(zip)) ~> removeduplicatescustomer",
+						"rename3 filter(!isNull(paymentid) && toString(paymentid) != '' &&",
+						"!isNull(loanid) && toString(loanid) != '' &&",
+						"!isNull(paymentdate) &&",
+						"!isNull(paymentamount) && paymentamount > 0) ~> loanpaymentfilter",
+						"loanpayments select(mapColumn(",
+						"          paymentid = payment_id,",
+						"          loanid = loan_id,",
+						"          paymentdate = payment_date,",
+						"          paymentamount = payment_amount",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename3",
+						"loanpaymentfilter aggregate(groupBy(paymentid,",
+						"          loanid),",
+						"     paymentdate = first(paymentdate),",
+						"          paymentamount = first(paymentamount)) ~> removeduplicatesloanpayments",
+						"loans select(mapColumn(",
+						"          loanid = loan_id,",
+						"          customerid = customer_id,",
+						"          loanamount = loan_amount,",
+						"          interestrate = interest_rate,",
+						"          loanterm = loan_term",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename4",
+						"rename4 filter(!isNull(loanid) && toString(loanid) != '' &&",
+						"!isNull(customerid) && toString(customerid) != '' &&",
+						"!isNull(loanamount) && loanamount > 0 &&",
+						"!isNull(interestrate) && interestrate > 0 &&",
+						"!isNull(loanterm) && loanterm > 0) ~> loansfilter",
+						"loansfilter aggregate(groupBy(loanid,",
+						"          customerid),",
+						"     loanamount = first(loanamount),",
+						"          interestrate = first(interestrate),",
+						"          loanterm = first(loanterm)) ~> removeduplicatesloans",
+						"transactions select(mapColumn(",
+						"          transactionid = transaction_id,",
+						"          accountid = account_id,",
+						"          transactiondate = transaction_date,",
+						"          transactionamount = transaction_amount,",
+						"          transactiontype = transaction_type",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename5",
+						"rename5 filter(!isNull(transactionid) && toString(transactionid) != '' &&",
+						"!isNull(accountid) && toString(accountid) != '' &&",
+						"!isNull(transactiondate) &&",
+						"!isNull(transactionamount) && transactionamount > 0 &&",
+						"(transactiontype == 'Deposit' || transactiontype == 'Withdrawal')) ~> transactionsfilter",
+						"transactionsfilter aggregate(groupBy(transactionid,",
+						"          accountid),",
+						"     transactiondate = first(transactiondate),",
+						"          transactionamount = first(transactionamount),",
+						"          transactiontype = first(transactiontype)) ~> removeduplicatestranscations",
+						"removeduplicatescustomer derive(state = iif(isNull(state),'unknown',state),",
+						"          zip = iif(isNull(zip),'unknown',zip)) ~> derivedColumn1",
+						"removeduplicatesaccounts sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     umask: 0022,",
+						"     preCommands: [],",
+						"     postCommands: [],",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          accountid,",
+						"          customerid,",
+						"          accounttype,",
+						"          balance",
+						"     )) ~> accountssink",
+						"derivedColumn1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     umask: 0022,",
+						"     preCommands: [],",
+						"     postCommands: [],",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          customer_id = customerid,",
+						"          first_name = firstname,",
+						"          last_name = lastname,",
+						"          address,",
+						"          city,",
+						"          state,",
+						"          zip",
+						"     )) ~> customerssink",
+						"removeduplicatesloanpayments sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     umask: 0022,",
+						"     preCommands: [],",
+						"     postCommands: [],",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          paymentid,",
+						"          loanid,",
+						"          paymentdate,",
+						"          paymentamount",
+						"     )) ~> loanpaymentssink",
+						"removeduplicatesloans sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     umask: 0022,",
+						"     preCommands: [],",
+						"     postCommands: [],",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          loanid,",
+						"          customerid,",
+						"          loanamount,",
+						"          interestrate,",
+						"          loanterm",
+						"     )) ~> loanssink",
+						"removeduplicatestranscations sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true,",
+						"     umask: 0022,",
+						"     preCommands: [],",
+						"     postCommands: [],",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     mapColumn(",
+						"          transactionid,",
+						"          accountid,",
+						"          transactiondate,",
+						"          transactionamount,",
+						"          transactiontype",
+						"     )) ~> transactionsink"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesink')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow2')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "source1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "target"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink2"
+						}
+					],
+					"transformations": [
+						{
+							"name": "rename"
+						},
+						{
+							"name": "createhashkey"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "split1"
+						},
+						{
+							"name": "insertauditcolumn"
+						},
+						{
+							"name": "updateauditcolumn"
+						},
+						{
+							"name": "alterRow1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          accountid as short,",
+						"          customerid as short,",
+						"          accounttype as string,",
+						"          balance as double",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     fileName: 'part-00000-ed8b4ced-5941-49f4-b7c6-1ebdd2bb62e5-c000.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> source1",
+						"source(output(",
+						"          accountid as integer,",
+						"          hashkey as long",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'query',",
+						"     store: 'sqlserver',",
+						"     query: 'SELECT accountid,hashkey from dbo.ACCOUNTSSCDTYPE1',",
+						"     isolationLevel: 'READ_UNCOMMITTED') ~> target",
+						"source1 select(mapColumn(",
+						"          each(match(1==1),",
+						"               concat('src_',$$) = $$)",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> rename",
+						"rename derive(src_hashkey = crc32(concat(toString(src_accountid),toString(src_customerid),src_accounttype,toString(src_balance)))) ~> createhashkey",
+						"createhashkey, target lookup(src_accountid == accountid,",
+						"     multiple: false,",
+						"     pickup: 'any',",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 split(isNull(accountid),",
+						"     src_accountid==accountid && src_hashkey != hashkey,",
+						"     disjoint: false) ~> split1@(insert, update)",
+						"split1@insert derive(src_createdby = 'dataflow',",
+						"          src_createddate = currentTimestamp(),",
+						"          src_updatedby = 'dataflow',",
+						"          src_updateddate = currentTimestamp()) ~> insertauditcolumn",
+						"split1@update derive(src_updatedby = 'dataflow-updated',",
+						"          src_updateddate = currentTimestamp()) ~> updateauditcolumn",
+						"updateauditcolumn alterRow(updateIf(1==1)) ~> alterRow1",
+						"insertauditcolumn sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'ACCOUNTSSCDTYPE1',",
+						"     insertable: true,",
+						"     updateable: false,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          accountid = src_accountid,",
+						"          customerid = src_customerid,",
+						"          accounttype = src_accounttype,",
+						"          balance = src_balance,",
+						"          hashkey = src_hashkey,",
+						"          createdby = src_createdby,",
+						"          createddate = src_createddate,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate",
+						"     )) ~> sink1",
+						"alterRow1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'ACCOUNTSSCDTYPE1',",
+						"     insertable: false,",
+						"     updateable: true,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     keys:['accountid'],",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          accountid = src_accountid,",
+						"          customerid = src_customerid,",
+						"          accounttype = src_accounttype,",
+						"          balance = src_balance,",
+						"          hashkey = src_hashkey,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate",
+						"     )) ~> sink2"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureSqlDatabase1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow3')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "source1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "target1"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink2"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink3"
+						}
+					],
+					"transformations": [
+						{
+							"name": "renamecustomers"
+						},
+						{
+							"name": "createhashkey"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "split1"
+						},
+						{
+							"name": "insertauditcolumns"
+						},
+						{
+							"name": "updateauditcolumns"
+						},
+						{
+							"name": "alterRow1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          customer_id as short,",
+						"          first_name as string,",
+						"          last_name as string,",
+						"          address as string,",
+						"          city as string,",
+						"          state as string,",
+						"          zip as string",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     fileName: 'part-00000-2e8f708d-79ae-4953-9149-5c64ee2437d5-c000.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> source1",
+						"source(output(",
+						"          customerid as integer,",
+						"          hashkey as long",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'query',",
+						"     store: 'sqlserver',",
+						"     query: 'select customerid,hashkey from CUSTOMERSSCDTYPE1',",
+						"     isolationLevel: 'READ_UNCOMMITTED') ~> target1",
+						"source1 select(mapColumn(",
+						"          each(match(1==1),",
+						"               concat('src_',$$) = $$)",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> renamecustomers",
+						"renamecustomers derive(src_hashkey = crc32(concat(toString(src_customer_id),src_first_name,src_last_name,src_address,src_city,src_state,src_zip))) ~> createhashkey",
+						"createhashkey, target1 lookup(src_customer_id == customerid,",
+						"     multiple: false,",
+						"     pickup: 'any',",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 split(isNull(customerid),",
+						"     src_customer_id == customerid && src_hashkey != hashkey,",
+						"     disjoint: false) ~> split1@(INSERT, UPDATE)",
+						"split1@INSERT derive(src_createdby = 'dataflow',",
+						"          src_createddate = currentTimestamp(),",
+						"          src_updatedby = 'dataflow',",
+						"          updateddate = currentTimestamp()) ~> insertauditcolumns",
+						"split1@UPDATE derive(src_updatedby = 'dataflow-updated',",
+						"          updateddate = currentTimestamp()) ~> updateauditcolumns",
+						"updateauditcolumns alterRow(updateIf(1==1)) ~> alterRow1",
+						"insertauditcolumns sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'CUSTOMERSSCDTYPE1',",
+						"     insertable: true,",
+						"     updateable: false,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          customerid = src_customer_id,",
+						"          firstname = src_first_name,",
+						"          lastname = src_last_name,",
+						"          address = src_address,",
+						"          city = src_city,",
+						"          state = src_state,",
+						"          zip = src_zip,",
+						"          hashkey = src_hashkey,",
+						"          createdby = src_createdby,",
+						"          createddate = src_createddate,",
+						"          updatedby = src_updatedby,",
+						"          updateddate",
+						"     )) ~> sink2",
+						"alterRow1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'CUSTOMERSSCDTYPE1',",
+						"     insertable: false,",
+						"     updateable: true,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     keys:['customerid'],",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          customerid = src_customer_id,",
+						"          firstname = src_first_name,",
+						"          lastname = src_last_name,",
+						"          address = src_address,",
+						"          city = src_city,",
+						"          state = src_state,",
+						"          zip = src_zip,",
+						"          hashkey = src_hashkey,",
+						"          updatedby = src_updatedby,",
+						"          updateddate",
+						"     )) ~> sink3"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureSqlDatabase1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow4')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "source1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "target2"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink2"
+						}
+					],
+					"transformations": [
+						{
+							"name": "renameloans"
+						},
+						{
+							"name": "createhashkey"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "split1"
+						},
+						{
+							"name": "insertauditcolumns"
+						},
+						{
+							"name": "updateauditcolumn"
+						},
+						{
+							"name": "alterRow1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          loanid as short,",
+						"          customerid as short,",
+						"          loanamount as double,",
+						"          interestrate as double,",
+						"          loanterm as short",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     fileName: 'part-00000-ce991fc1-c83f-4ca0-ae9f-7f44ebcbbcda-c000.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> source1",
+						"source(output(",
+						"          loanid as integer,",
+						"          hashkey as long",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'query',",
+						"     store: 'sqlserver',",
+						"     query: 'select loanid,hashkey from loansscdtype1',",
+						"     isolationLevel: 'READ_UNCOMMITTED') ~> target2",
+						"source1 select(mapColumn(",
+						"          each(match(1==1),",
+						"               concat('src_',$$) = $$)",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> renameloans",
+						"renameloans derive(src_hashkey = crc32(concat(toString(src_loanid),toString(src_customerid),toString(src_loanamount),toString(src_interestrate),toString(src_loanterm)))) ~> createhashkey",
+						"createhashkey, target2 lookup(src_loanid == loanid,",
+						"     multiple: false,",
+						"     pickup: 'any',",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 split(isNull(loanid),",
+						"     src_loanid == loanid && src_hashkey != hashkey,",
+						"     disjoint: false) ~> split1@(INSERT, UPDATE)",
+						"split1@INSERT derive(src_createdby = 'dataflow',",
+						"          src_createddate = currentTimestamp(),",
+						"          src_updatedby = 'dataflow',",
+						"          src_updateddate = currentTimestamp()) ~> insertauditcolumns",
+						"split1@UPDATE derive(updatedby = 'dataflow-updated',",
+						"          updateddate = currentTimestamp()) ~> updateauditcolumn",
+						"updateauditcolumn alterRow(updateIf(1==1)) ~> alterRow1",
+						"insertauditcolumns sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'loansscdtype1',",
+						"     insertable: true,",
+						"     updateable: false,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          loanid = src_loanid,",
+						"          customerid = src_customerid,",
+						"          loanamount = src_loanamount,",
+						"          interestrate = src_interestrate,",
+						"          loanterm = src_loanterm,",
+						"          hashkey = src_hashkey,",
+						"          createdby = src_createdby,",
+						"          createddate = src_createddate,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate",
+						"     )) ~> sink1",
+						"alterRow1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'loansscdtype1',",
+						"     insertable: false,",
+						"     updateable: true,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     keys:['loanid'],",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError') ~> sink2"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureSqlDatabase1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow5')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "source1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "target3"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink2"
+						}
+					],
+					"transformations": [
+						{
+							"name": "renameloanpayments"
+						},
+						{
+							"name": "createhashkey"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "split1"
+						},
+						{
+							"name": "insertauditcolumns"
+						},
+						{
+							"name": "updateauditcolumns"
+						},
+						{
+							"name": "alterRow1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          paymentid as short,",
+						"          loanid as short,",
+						"          paymentdate as date,",
+						"          paymentamount as double",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     fileName: 'part-00000-876a62e7-2bab-4938-ac1e-880fb9eaaf77-c000.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> source1",
+						"source(output(",
+						"          paymentid as integer,",
+						"          hashkey as long",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'query',",
+						"     store: 'sqlserver',",
+						"     query: 'select paymentid,hashkey from loanpaymentsscdtype1',",
+						"     isolationLevel: 'READ_UNCOMMITTED') ~> target3",
+						"source1 select(mapColumn(",
+						"          each(match(1==1),",
+						"               concat('src_',$$) = $$)",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> renameloanpayments",
+						"renameloanpayments derive(src_hashkey = crc32(concat(toString(src_paymentid),toString(src_loanid),toString(src_paymentdate),toString(src_paymentamount)))) ~> createhashkey",
+						"createhashkey, target3 lookup(src_paymentid == paymentid,",
+						"     multiple: false,",
+						"     pickup: 'any',",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 split(isNull(paymentid),",
+						"     src_paymentid == paymentid && src_hashkey != hashkey,",
+						"     disjoint: false) ~> split1@(INSERT, UPDATE)",
+						"split1@INSERT derive(src_createdby = 'dataflow',",
+						"          src_createddate = currentTimestamp(),",
+						"          src_updatedby = 'dataflow',",
+						"          src_updateddate = currentTimestamp()) ~> insertauditcolumns",
+						"split1@UPDATE derive(src_updatedby = 'dataflow-updated',",
+						"          src_updateddate = currentTimestamp()) ~> updateauditcolumns",
+						"updateauditcolumns alterRow(updateIf(1==1)) ~> alterRow1",
+						"insertauditcolumns sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'loanpaymentsscdtype1',",
+						"     insertable: true,",
+						"     updateable: false,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          paymentid = src_paymentid,",
+						"          loanid = src_loanid,",
+						"          paymentdate = src_paymentdate,",
+						"          paymentamount = src_paymentamount,",
+						"          hashkey = src_hashkey,",
+						"          createdby = src_createdby,",
+						"          createddate = src_createddate,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate",
+						"     )) ~> sink1",
+						"alterRow1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'loanpaymentsscdtype1',",
+						"     insertable: false,",
+						"     updateable: true,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     keys:['paymentid'],",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          paymentid = src_paymentid,",
+						"          loanid = src_loanid,",
+						"          paymentdate = src_paymentdate,",
+						"          paymentamount = src_paymentamount,",
+						"          hashkey = src_hashkey,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate",
+						"     )) ~> sink2"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureSqlDatabase1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/dataflow6')]",
+			"type": "Microsoft.Synapse/workspaces/dataflows",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"type": "MappingDataFlow",
+				"typeProperties": {
+					"sources": [
+						{
+							"linkedService": {
+								"referenceName": "AzureDataLakeStoragesource",
+								"type": "LinkedServiceReference"
+							},
+							"name": "source1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "target4"
+						}
+					],
+					"sinks": [
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink1"
+						},
+						{
+							"linkedService": {
+								"referenceName": "AzureSqlDatabase1",
+								"type": "LinkedServiceReference"
+							},
+							"name": "sink2"
+						}
+					],
+					"transformations": [
+						{
+							"name": "renametransactions"
+						},
+						{
+							"name": "derivedColumn1"
+						},
+						{
+							"name": "lookup1"
+						},
+						{
+							"name": "split1"
+						},
+						{
+							"name": "insertauditcolumn"
+						},
+						{
+							"name": "union1"
+						},
+						{
+							"name": "updateauditcolumn"
+						},
+						{
+							"name": "alterRow1"
+						}
+					],
+					"scriptLines": [
+						"source(output(",
+						"          transactionid as short,",
+						"          accountid as short,",
+						"          transactiondate as date,",
+						"          transactionamount as double,",
+						"          transactiontype as string",
+						"     ),",
+						"     useSchema: false,",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     ignoreNoFilesFound: false,",
+						"     format: 'delimited',",
+						"     fileSystem: 'container11',",
+						"     folderPath: 'PROJECT1/SILVER',",
+						"     fileName: 'part-00000-6f7e0be4-d167-40ba-889d-2f8cde7e271b-c000.csv',",
+						"     columnDelimiter: ',',",
+						"     escapeChar: '\\\\',",
+						"     quoteChar: '\\\"',",
+						"     columnNamesAsHeader: true) ~> source1",
+						"source(output(",
+						"          transactionid as integer,",
+						"          hashkey as long",
+						"     ),",
+						"     allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'query',",
+						"     store: 'sqlserver',",
+						"     query: 'select transactionid,hashkey from transactionsscdtype2 where isActive=1',",
+						"     isolationLevel: 'READ_UNCOMMITTED') ~> target4",
+						"source1 select(mapColumn(",
+						"          each(match(1==1),",
+						"               concat('src_',$$) = $$)",
+						"     ),",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true) ~> renametransactions",
+						"renametransactions derive(src_hashkey = crc32(concat(toString(src_transactionid),toString(src_accountid),toString(src_transactiondate),toString(src_transactionamount),src_transactiontype))) ~> derivedColumn1",
+						"derivedColumn1, target4 lookup(src_transactionid == transactionid,",
+						"     multiple: false,",
+						"     pickup: 'any',",
+						"     broadcast: 'auto')~> lookup1",
+						"lookup1 split(isNull(transactionid),",
+						"     src_transactionid ==transactionid && src_hashkey != hashkey,",
+						"     disjoint: false) ~> split1@(INSERT, UPDATE)",
+						"union1 derive(src_createdby = 'dataflow',",
+						"          src_createddate = currentTimestamp(),",
+						"          src_updatedby = 'dataflow',",
+						"          src_updateddate = currentTimestamp(),",
+						"          src_isActive = 1) ~> insertauditcolumn",
+						"split1@INSERT, split1@UPDATE union(byName: true)~> union1",
+						"split1@UPDATE derive(src_updatedby = 'dataflow-updated',",
+						"          src_updateddate = currentTimestamp(),",
+						"          src_isActive = 0) ~> updateauditcolumn",
+						"updateauditcolumn alterRow(updateIf(1==1)) ~> alterRow1",
+						"insertauditcolumn sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'transactionsscdtype2',",
+						"     insertable: true,",
+						"     updateable: false,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          transactionid = src_transactionid,",
+						"          accountid = src_accountid,",
+						"          transactiondate = src_transactiondate,",
+						"          transactionamount = src_transactionamount,",
+						"          transactiontype = src_transactiontype,",
+						"          hashkey = src_hashkey,",
+						"          createdby = src_createdby,",
+						"          createddate = src_createddate,",
+						"          updatedby = src_updatedby,",
+						"          updateddate = src_updateddate,",
+						"          isActive = src_isActive",
+						"     )) ~> sink1",
+						"alterRow1 sink(allowSchemaDrift: true,",
+						"     validateSchema: false,",
+						"     format: 'table',",
+						"     store: 'sqlserver',",
+						"     schemaName: 'dbo',",
+						"     tableName: 'transactionsscdtype2',",
+						"     insertable: false,",
+						"     updateable: true,",
+						"     deletable: false,",
+						"     upsertable: false,",
+						"     keys:['transactionid','hashkey'],",
+						"     stagingSchemaName: '',",
+						"     skipDuplicateMapInputs: true,",
+						"     skipDuplicateMapOutputs: true,",
+						"     errorHandlingOption: 'stopOnFirstError',",
+						"     mapColumn(",
+						"          transactionid = src_transactionid,",
+						"          accountid = src_accountid,",
+						"          transactiondate = src_transactiondate,",
+						"          transactionamount = src_transactionamount,",
+						"          transactiontype = src_transactiontype,",
+						"          hashkey = src_hashkey,",
+						"          supdatedby = src_updatedby,",
+						"          updateddate = src_updateddate,",
+						"          isActive = src_isActive",
+						"     )) ~> sink2"
+					]
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/linkedServices/AzureDataLakeStoragesource')]",
+				"[concat(variables('workspaceId'), '/linkedServices/AzureSqlDatabase1')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/default')]",
+			"type": "Microsoft.Synapse/workspaces/managedVirtualNetworks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/demo')]",
+			"type": "Microsoft.Synapse/workspaces/bigDataPools",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"autoPause": {
+					"enabled": true,
+					"delayInMinutes": 15
+				},
+				"autoScale": {
+					"enabled": true,
+					"maxNodeCount": 10,
+					"minNodeCount": 3
+				},
+				"nodeCount": 10,
+				"nodeSize": "Medium",
+				"nodeSizeFamily": "MemoryOptimized",
+				"sparkVersion": "3.4",
+				"isComputeIsolationEnabled": false,
+				"sessionLevelPackagesEnabled": false,
+				"annotations": []
+			},
+			"dependsOn": [],
+			"location": "canadacentral"
+		}
+	]
+}
